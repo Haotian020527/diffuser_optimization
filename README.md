@@ -1,277 +1,316 @@
-# M²Diffuser: Diffusion-based Trajectory Optimization for Mobile Manipulation in 3D Scenes
+为了确保您可以一键无缝复制，以下是纯净的 Markdown 代码块，未添加任何其他对话文本。请直接点击代码框右上角的“复制”按钮：
 
-**IEEE Transactions on Pattern Analysis and Machine Intelligence (T-PAMI) 2025**
+````markdown
+# diffuser_optimization
 
-<p align="left">
-    <a href='https://m2diffuser.github.io/assets/paper/M2Diffuser.pdf'>
-      <img src='https://img.shields.io/badge/Paper-PDF-red?style=plastic&logo=adobeacrobatreader&logoColor=red' alt='Paper PDF'>
-    </a>
-    <a href='https://arxiv.org/pdf/2410.11402'>
-      <img src='https://img.shields.io/badge/Paper-arXiv-green?style=plastic&logo=arXiv&logoColor=green' alt='Paper arXiv'>
-    </a>
-    <a href='https://m2diffuser.github.io/'>
-      <img src='https://img.shields.io/badge/Project-Page-blue?style=plastic&logo=Google%20chrome&logoColor=blue' alt='Project Page'>
-    </a>
-    <a href='https://youtu.be/T7kpDifRtfk?si=-R5agRpDM4uJKtuz' target='_blank'>
-      <img src='https://img.shields.io/badge/YouTube-Video-6f42c1?style=plastic&logo=youtube&logoColor=white' alt='YouTube Video'>
-    </a>
-    <a href='https://b23.tv/avOmoz0'>
-      <img src='https://img.shields.io/badge/Bilibili-Video-ff69b4?style=plastic&logo=bilibili&logoColor=white' alt='Bilibili Video'>
-    </a>
-    <a href='https://huggingface.co/datasets/M2Diffuser/mec_kinova_mobile_manipulation/tree/main'>
-      <img src='https://img.shields.io/badge/Model-Checkpoints-orange?style=plastic&logo=Google%20Drive&logoColor=orange' alt='Checkpoints'>
-    </a>
-</p>
+> `diffuser_optimization` 是一个面向移动操作的研究代码仓库。它以 `M2Diffuser` 为核心，统一实现了扩散式整段轨迹生成、物理约束优化、任务目标引导，以及 `MPiNets` / `MPiFormer` 基线对比。其中 **AMOGG** 是当前代码快照里最关键、最值得关注的采样引导模块。
 
-[Sixu Yan](https://sixu-yan.github.io)<sup>1,2</sup>,
-[Zeyu Zhang](https://zeyuzhang.com/)<sup>2</sup>,
-[Muzhi Han](https://sites.google.com/view/muzhihan)<sup>3</sup>,
-Zaijin Wang<sup>2</sup>,
-[Qi Xie](https://github.com/sudoku77/)<sup>2</sup>,
-Zhitian Li<sup>2,4</sup>,
-Zhehan Li<sup>2,5</sup>,
-[Hangxin Liu](https://liuhx111.github.io/)<sup>2</sup>,
-[Xinggang Wang](https://xwcv.github.io/)<sup>1</sup>,
-[Song-Chun Zhu](https://zhusongchun.net/)<sup>2,6,7</sup>
+---
 
-Corresponding authors: Xinggang Wang (xgwang@hust.edu.cn) and Hangxin Liu (liuhx@bigai.ai)
+## 📖 目录
 
-<sup>1 </sup>HUST,
-<sup>2 </sup>BIGAI,
-<sup>3 </sup>UCLA,
-<sup>4 </sup>BUAA,
-<sup>5 </sup>XDU,
-<sup>6 </sup>PKU,
-<sup>7 </sup>THU
+- [项目简介](#-项目简介)
+- [✨ 核心特性](#-核心特性)
+- [🧠 AMOGG 深入解析](#-amogg-深入解析)
+- [⚙️ 安装与环境配置](#️-安装与环境配置)
+- [🚀 快速开始](#-快速开始)
+- [📂 文件结构](#-文件结构)
+- [📌 已知说明](#-已知说明)
+- [🤝 贡献与协议](#-贡献与协议)
+- [📑 引用与致谢](#-引用与致谢)
 
-<img src="./assests/teaser.jpg" alt="drawing" width="100%"/>
-<img src="./assests/overview.png" alt="drawing" width="100%"/>
+---
 
-## Install Environment
-To reproduce our simulation results, please install your conda environment on a Linux machine equipped with an NVIDIA GPU. M2Diffuser is developed with Python 3.8.18 and has only been tested on Ubuntu 20.04.
+## 💡 项目简介
 
-We recommend using the same CUDA and PyTorch versions as ours (PyTorch 1.13.1 with CUDA 11.6) for compatibility. If you choose to use different versions, please make sure to adjust the corresponding versions of `pytorch-lightning` and `kaolin` in the environment configuration `./setup_env.sh` accordingly.
+### 一句话说明
+`M2Diffuser` 采用扩散模型生成整段机器人轨迹，并在采样阶段持续注入任务目标与物理约束，让生成的轨迹不仅“**到得了**”，还更可能“**走得通**”。
+
+### 解决了什么问题？
+在移动操作任务中，单纯预测下一步动作通常会面临以下挑战：
+1. **累积误差**：一步偏离，后续整条轨迹都会产生漂移。
+2. **目标冲突**：任务目标和物理约束容易产生冲突（例如，离目标越近可能意味着越容易发生碰撞）。
+3. **约束滞后**：传统“先生成，再后处理”的流程将约束修正放得太晚，导致轨迹的物理可行性差。
+
+**本仓库的核心解决方案：**
+- 放弃单步预测，使用 `DDPM + UNet` 生成**整段轨迹**。
+- 使用 `planner` 表达**任务目标**（如 `goal-reach`, `pick`, `place`）。
+- 使用 `optimizer` 表达**物理约束**（如防碰撞、关节限制、动作幅度、平滑度）。
+- 使用 **AMOGG** 在采样时自适应融合多个目标的梯度，解决硬性相加导致的冲突问题。
+
+### 当前公开快照重点
+本仓库目前提供最完整、可直接运行的 preset 为 **`goal-reach`**。
+同时包含 `pick` / `place` 的预处理与结果汇总代码，以及 `M2Diffuser`、`MPiNets` 和 `MPiFormer` 三套完整的模型实现框架。
+
+---
+
+## ✨ 核心特性
+
+- 🌪️ **扩散式整段轨迹生成**：`M2Diffuser` 从噪声出发，逐步反向采样出完整轨迹，而非单步贪心预测。
+- ⚖️ **AMOGG 多目标引导**：在 `DDPM.p_sample()` 内部智能协调任务梯度与碰撞梯度，化解多目标冲突。
+- 📊 **统一的基线对比框架**：集成 `M2Diffuser`、`MPiNets`、`MPiFormer`，确保公平一致的对比实验。
+- 🧊 **3D 场景条件建模**：直接使用场景、物体、目标的 3D 点云作为几何输入条件。
+- 🛡️ **物理感知评测**：内置基于 PyBullet 的评测脚本，精准统计碰撞率、越界、平滑度及耗时等核心物理指标。
+- 🎛️ **Hydra 驱动配置**：模型、扩散器、任务、规划器与优化器均实现高度解耦的模块化管理。
+
+<details>
+<summary><strong>🔍 核心模块速览（点击展开）</strong></summary>
+
+| 模块 | 核心作用 | 入口文件 |
+|---|---|---|
+| **Train** | 统一训练入口 | `train.py` |
+| **Inference** | M2Diffuser 推理 | `inference_m2diffuser.py` |
+| **DDPM** | 扩散模型与采样主逻辑 | `models/m2diffuser/ddpm.py` |
+| **AMOGG** | AMOGG 算法数学实现 | `models/m2diffuser/amogg.py` |
+| **Planner** | 任务目标引导 | `models/planner/mk_motion_policy_planning.py` |
+| **Optimizer**| 物理约束优化 | `models/optimizer/mk_motion_policy_optimization.py` |
+| **Env** | 评估与可视化环境 | `env/mk_motion_policy_env.py` |
+| **Test** | AMOGG smoke test | `scripts/test_amogg_integration.py` |
+
+</details>
+
+---
+
+## 🧠 AMOGG 深入解析
+
+> AMOGG 是本仓库中最核心的创新增强模块。它并不替代 `planner` 或 `optimizer`，而是专注于解决**在采样时如何正确、高效地组合多个目标梯度**。
+
+### 什么是 AMOGG？
+AMOGG（**Adaptive Multi-Objective Gradient Guidance**）实现了：
+- 时间感知加权 (Time-aware weighting)
+- 冲突规避投影 (Conflict-avoidance projection)
+- 可选的方差感知引导注入 (Variance-aware guidance injection)
+
+### 为什么需要它？
+在 `M2Diffuser` 采样中，主要存在两类引导信号：
+1. **任务目标梯度** ($g_{task}$)：如靠近目标。
+2. **物理约束梯度** ($g_{collision}$)：如避免碰撞。
+
+若直接相加 ($g = g_{task} + g_{collision}$)，当两目标冲突时，会导致梯度抵消、采样震荡，或导致早期采样被约束压死。AMOGG 将两者融合为一个稳定的、带时序偏置的复合 Guidance。
+
+### 处理流程
+
+```mermaid
+flowchart TD
+    A["Conditioned DDPM Sampling"] --> B["Compute model_mean & variance"]
+    B --> C["Task objective gradient (Planner)"]
+    B --> D["Collision objective gradient (Optimizer)"]
+    C --> E["AMOGG"]
+    D --> E["AMOGG"]
+    E --> F["Guided model_mean update"]
+    F --> G["Sample x_(t-1)"]
+````
+
+*注：AMOGG 不参与训练损失，仅在**推理采样阶段**生效。*
+
+### 核心数学逻辑
+
+1.  **梯度计算**：分别计算 $g_1 = \nabla c_{task}$ 与 $g_2 = \nabla c_{collision}$。
+2.  **冲突投影**：若 $\langle g_1, g_2 \rangle < 0$（存在冲突），将 $g_2$ 投影到 $g_1$ 的法平面，得到安全的非冲突分量 $g_{2\_safe}$。
+3.  **时序融合**：利用激活函数（如 Sigmoid）根据当前扩散步数动态分配权重，确保早期注重整体任务，晚期注重精细约束。
+
+### 如何验证 AMOGG
+
+仓库内置了 Smoke test 来验证核心数学逻辑和 DDPM 分支：
+
 ```bash
-./setup_env.sh
+python scripts/test_amogg_integration.py
 ```
-Modify the `yourdfpy/urdf.py` file in the yourdfpy package by editing lines `1240–1244`.
+
+\<details\>
+\<summary\>\<strong\>📚 AMOGG 推荐阅读源码顺序\</strong\>\</summary\>
+
+1.  `models/m2diffuser/amogg.py`
+2.  `models/m2diffuser/ddpm.py`
+3.  `models/planner/mk_motion_policy_planning.py`
+4.  `models/optimizer/mk_motion_policy_optimization.py`
+5.  `scripts/test_amogg_integration.py`
+
+\</details\>
+
+-----
+
+## ⚙️ 安装与环境配置
+
+**推荐环境**: Ubuntu 20.04 | NVIDIA GPU | Python 3.8.18 | CUDA 11.6 | PyTorch 1.13.1
+
+### 1\. 克隆仓库
+
+```bash
+git clone [https://github.com/Haotian020527/diffuser_optimization.git](https://github.com/Haotian020527/diffuser_optimization.git)
+cd diffuser_optimization
+```
+
+### 2\. 创建并安装环境
+
+```bash
+bash ./setup_env.sh
+```
+
+*该脚本将自动安装对应的 PyTorch, PyTorch-Lightning, Kaolin, PointNet2 ops 等依赖。*
+
+### 3\. 修补 `yourdfpy`
+
+根据项目要求，请修改 `yourdfpy/urdf.py` 中的 mesh scale 逻辑：
+
 ```python
-# delete the original code in the file and replace it with the code below
+# 修改前
+new_s = new_s.scaled(geometry.mesh.scale)
+# 修改后
 new_s = new_s.scaled([geometry.mesh.scale[0], geometry.mesh.scale[1], geometry.mesh.scale[2]])
 ```
 
-## Download URDF and USD Files
-Please download the robot and scene models, including:
-- [URDF](https://huggingface.co/datasets/M2Diffuser/mec_kinova_mobile_manipulation/blob/main/agent_urdf.zip) and [USD](https://huggingface.co/datasets/M2Diffuser/mec_kinova_mobile_manipulation/blob/main/agent_usd.zip) files of the robots
-- [URDF](https://huggingface.co/datasets/M2Diffuser/mec_kinova_mobile_manipulation/blob/main/physcene_urdf.zip) and [USD](https://huggingface.co/datasets/M2Diffuser/mec_kinova_mobile_manipulation/blob/main/physcene_usd.zip) files of the scenes
+### 4\. 数据与路径配置
 
-After downloading, please unzip and place the URDF files of the robots and scenes into the `${your_urdf_model_path}` directory, and update the corresponding paths in `utils/path.py` according to your actual directory structure. The directory path of USD files will be introduced in [here](#evaluate-models).
+  * 下载 URDF / USD / Dataset / Checkpoints: [Hugging Face 资源入口](https://huggingface.co/datasets/M2Diffuser/mec_kinova_mobile_manipulation/tree/main)
+  * 更新本地路径：在 `utils/path.py` 和 `configs/task/*.yaml` 中修改 `data_dir` 为你的本地绝对路径。
 
-## Pre-process Dataset
-Please download and unzip our [pre-processed dataset](https://huggingface.co/datasets/M2Diffuser/mec_kinova_mobile_manipulation/blob/main/dataset.zip), which is pre-processed to be used for model training. It includes three mobile manipulation tasks: `pick`, `place`, and `goal-reach`. The dataset directory is organized as follows:
-```bash
-${your_dataset_path}}/
-├── pick/
-│   ├── 0.npy
-│   ├── 1.npy
-│   └── ...
-├── place/
-│   ├── 0.npy
-│   ├── 1.npy
-│   └── ...
-├── goal-reach/
-│   ├── 0.npy
-│   ├── 1.npy
-│   └── ...
-```
-> Note: for details about the data structure in the `.npy` files, please refer to the comments in `./preprocessing/data_preprocess_pick.py` and `./preprocessing/data_preprocess_place.py` that describe their data components.
+-----
 
-Alternatively, you may download the [original data](https://huggingface.co/datasets/M2Diffuser/mec_kinova_mobile_manipulation/blob/main/original_data.zip) and process it yourself. The data is generated by our previous work—[M3Bench](https://zeyuzhang.com/papers/m3bench/) and [VKC](https://github.com/zyjiao4728/Planning-on-VKC), and includes two tasks: `pick` and `place`. Note that the `goal-reach` task reuses the processed `pick` data, as described in our paper. The original data directory is organized as follow:
-```bash
-${your_original_data_path}/
-├── pick/
-│   ├── ${physcene_name}/
-│   │   ├── ${object_link_name}
-│   │   │   ├── ${time_stamp}
-│   │   │   │   ├── env_config.json
-│   │   │   │   ├── ${pick_exp_id}
-│   │   │   │   │   ├── config.json
-│   │   │   │   │   ├── pick_vkc_return.json
-│   │   │   │   │   ├── vkc_request.json
-│   │   │   │   │   └── trajectory
-│   │   │   │   │       ├── pick_action_relativity.json
-│   │   │   │   │       ├── pick_trajectory_absolute.json
-│   │   │   │   │       ├── pick_trajectory_relativity.json
-│   │   │   │   │       └── pick_vkc_caption_trajectory.json
-│   │   │   │   └── ...
-│   │   │   └── ...
-│   │   └── ...
-│   └── ...
-├── place/
-│   ├── ${physcene_name}/
-│   │   ├── ${object_link_name}
-│   │   │   ├── ${time_stamp}_place
-│   │   │   │   ├── env_config.json
-│   │   │   │   ├── ${place_exp_id}
-│   │   │   │   │   ├── config.json
-│   │   │   │   │   ├── place_vkc_return.json
-│   │   │   │   │   ├── vkc_request.json
-│   │   │   │   │   └── trajectory
-│   │   │   │   │       ├── place_action_relativity.json
-│   │   │   │   │       ├── place_trajectory_absolute.json
-│   │   │   │   │       ├── place_trajectory_relativity.json
-│   │   │   │   │       └── place_vkc_caption_trajectory.json
-│   │   │   │   └── ...
-│   │   │   └── ...
-│   │   └── ...
-│   └── ...
-```
+## 🚀 快速开始
 
-The code for processing the original data is as follows:
+### 0\. 验证 AMOGG 环境
 
 ```bash
-# pre-process pick data
-python data_preprocess_pick.py --robot MecKinova --task pick --origin_path ${your_original_data_path}/pick --save_path ${your_dataset_path}} --overwrite
-
-# pre-process place data
-python data_preprocess_place.py --robot MecKinova --task place --origin_path ${your_original_data_path}/place --save_path ${your_dataset_path}} --overwrite
-
-# pre-process the goal-reach data, simply copy the processed `pick` data and rename the directory to `goal-reach`.
-```
-> **Note:** make sure to update the corresponding data paths in the YAML files under the `configs/task` directory, such as `data_dir: ${your_dataset_path}/${task.type}`.
-
-## Train Models
-Train M2Diffuser, MPiNets, and MPiFormer on the mobile manipulation dataset using the following code. Our codebase supports both single-GPU and multi-GPU training.
-- M2Diffuser training
-```bash
-bash ./scripts/model-m2diffuser/${task_type}/train.sh ${GPU_NUM}
-# e.g., bash ./scripts/model-m2diffuser/pick/train.sh 1
-```
-- MPiNets training
-```bash
-bash ./scripts/model-mpinets/${task_type}/train.sh ${GPU_NUM}
-```
-- MPiFormer training
-```bash
-bash ./scripts/model-mpiformer/${task_type}/train.sh ${GPU_NUM}
-```
-All trained model checkpoints are saved in the `./checkpoints` folder by default. You can also modify the `output_dir: checkpoints` field in `./configs/default.yaml` to change the checkpoint saving path.
-
-## Evaluate Models
-Use the following code to evaluate M2Diffuser, MPiNets, and MPiFormer on the mobile manipulation dataset. The evaluation includes: (1) testing physical feasibility (e.g., collision, smoothness) in PyBullet, and (2) verifying task success (e.g., grasping and placement) in NVIDIA Isaac Sim.
-
-You can either use your own trained checkpoints or download our [pre-trained models](https://huggingface.co/datasets/M2Diffuser/mec_kinova_mobile_manipulation/blob/main/checkpoints.zip) and unzip them into a folder, e.g., `./checkpoints/`.
-
-task|checkpoints|desc
--|-|-
-MK-M2Diffuser-Pick|2024-06-28-20-36-17|M2Diffuser trained on `pick` data
-MK-M2Diffuser-Place|2024-07-21-22-54-33|M2Diffuser trained on `place` data
-MK-M2Diffuser-Goal-Reach|2024-07-14-09-38-10|M2Diffuser trained on `goal-reach` data
-MK-MPiNets-Pick|2024-07-07-09-16-52|MPiNets trained on `pick` data
-MK-MPiNets-Place|2024-07-25-09-30-12|MPiNets trained on `place` data
-MK-MPiNets-Goal-Reach|2024-07-10-16-04-41|MPiNets trained on `goal-reach` data
-MK-MPiFormer-Pick|2024-07-14-10-20-36|MPiFormers trained on `pick` data
-MK-MPiFormer-Place|2024-07-23-19-15-15|MPiFormers trained on `place` data
-MK-MPiFormer-Goal-Reach|2024-08-01-18-50-33|MPiFormers trained on `goal-reach` data
-
-### 1. Evaluatation in PyBullet
-Our evaluation in the PyBullet environment focuses on assessing whether the trajectories generated by different models adhere to physical constraints, including collision rate, joint violations, and trajectory smoothness.
-
-- M2Diffuser evaluation
-```bash
-bash ./scripts/model-m2diffuser/${task_type}/inference.sh ${CKPT_PATH}
-```
-> **Note:** By default, M2Diffuser is evaluated with trajectory optimization enabled. To evaluate M2Diffuser without trajectory optimization, please comment out the lines containing `planner` and `optimizer` in `./scripts/model-m2diffuser/${task_type}/inference.sh`. Here, `planner` and `optimizer` correspond to the `cost` and `energy` functions described in the [paper](https://arxiv.org/pdf/2410.11402), respectively.
-
-- MPiNets evaluation
-```bash
-bash ./scripts/model-mpinets/${task_type}/inference.sh ${CKPT_PATH}
+python scripts/test_amogg_integration.py
 ```
 
-- MPiFormer evaluation
-```bash
-bash ./scripts/model-mpiformer/${task_type}/inference.sh ${CKPT_PATH}
-```
-
-To enable visualization of the evaluation results, set `task.environment.viz` to `true` in `./scripts/model-${model_name}/${task_type}/inference.sh`. When you run the script, it will print a URL that you can open in a browser on the host machine to view the scene and the robot.
-
-All evaluation results are saved in the `./results directory`, which follows the structure below. The file `all.json` contains aggregated evaluation results across all trajectories. The file `${task_type}_${object_name}.json` stores results for trajectories involving the same object within a specific task type, and `${id}.json` records the evaluation result of each individual trajectory.
-```bash
-./results/
-├── mk_${model_name}_${task_type}/
-│   ├── ${time_stamp}
-│   │   ├── all
-│   │   │   └── all.json
-│   │   ├── group
-│   │   │   ├── ${task_type}_${object_name}.json
-│   │   │   └── ...
-│   │   └── object
-│   │       ├── ${id}.json
-│   │       └── ...
-│   └── ...
-└── ...
-```
-
-### 2. Evaluatation in NVIDIA Isaac Sim
-To evaluate task success rates in NVIDIA Isaac Sim, a separate conda environment needs to be created. The evaluation code should then be run within this environment to compute the task success rates.
-- Install Tongverse
-```bash
-cd ${your_workspace}
-git clone ...
-```
-
-Additionally, please unzip and place the USD files of the robots and scenes into the `${your_workspace}/Tongverse` directory. Of note, this path is hardcoded and does not support custom configuration.
-
-- Evaluate Tasks (`pick` and `place`)
-```bash
-cd ${your_workspace}/Tongverse/tv_evaluate
-python evaluate_${task_type}.py --result_dir ${your_workspace}/m2diffuser/results/${task_type}/${time_stamp} --dataset_test_dir ${your_dataset_path}/${task_type}/test 
-```
-
-The evaluation results from NVIDIA Isaac Sim will be saved to `${your_workspace}/m2diffuser/results/${task_type}/${time_stamp}/eval_res_${new_time_stamp}.json`. The `${new_time_stamp}` suffix is used to prevent repeated evaluations from overwriting previous results.
-
-### 3. Results Summary
-Aggregate and summarize the evaluation results from PyBullet and NVIDIA Isaac Sim. When selecting the evaluation file from NVIDIA Isaac Sim, remove the `${new_time_stamp}` suffix to obtain the standardized filename: `${your_workspace}/m2diffuser/results/${task_type}/${time_stamp}/eval_res.json`.
-
-Switch back to the `m2diffuser` conda environment and run the following code:
+### 1\. 训练 M2Diffuser (Goal-reach 任务)
 
 ```bash
-conda activate m2diffuser
-cd ${your_workspace}/postprocessing
-python eval_all_result_${task_type}_dataset.py --result_dir ../../results_dataset/${task_type}/${timestamp} --dataset_test_dir ${your_dataset_path}/${task_type}/test
+bash ./scripts/model-m2diffuser/goal-reach/train.sh 1
 ```
 
-The aggregated evaluation results will be saved in the file `${your_workspace}/m2diffuser/results/${task_type}/${time_stamp}/eval_metrics.json`. The evaluation metrics recorded in this file are as follows:
+### 2\. 推理 M2Diffuser
 
-```
-${object_name}: {
-    "% Success": xxx,
-    "Number": xxx,
-    "% With Environment Collision": xxx,
-    "% With Self Collision": xxx,
-    "% With Joint Limit Violations": xxx,
-    "Average Collision Depth (cm)": xxx,
-    "Median Collision Depth (cm)": xxx,
-    "Average Config SPARC": xxx,
-    "Average End Eff SPARC": xxx,
-    "% Smooth": xxx,
-    "Average End Eff Position Path Length": xxx,
-    "Average End Eff Orientation Path Length": xxx,
-    "Average Time": xxx,
-    "Average Time Per Step (Not Always Valuable)": xxx
-},
-...
+```bash
+# <CKPT_DIR> 为包含 last.ckpt 的路径
+bash ./scripts/model-m2diffuser/goal-reach/inference.sh <CKPT_DIR>
 ```
 
+\<details\>
+\<summary\>\<strong\>🛠️ 3. 启用 AMOGG 的高级推理配置 (Hydra CLI)\</strong\>\</summary\>
 
-## TODO List
-- [x] Release mobile manipulation dataset  
-- [x] Release model checkpoints
-- [ ] Release the evaluation code in NVIDIA Isaac Sim
+你可以通过覆盖 Hydra 参数在推理中完整激活 AMOGG 特性：
 
-## Citations
-**M2Diffuser**
+```bash
+python inference_m2diffuser.py hydra/job_logging=none hydra/hydra_logging=none \
+  exp_dir=<CKPT_DIR> \
+  task=mk_m2diffuser_goal_reach \
+  diffuser=ddpm \
+  diffuser.timesteps=50 \
+  model=m2diffuser_mk \
+  model.use_position_embedding=true \
+  optimizer=mk_motion_policy_optimization \
+  optimizer.scale_type=div_var \
+  optimizer.collision=true \
+  optimizer.collision_weight=0.03 \
+  optimizer.collision_margin=0.02 \
+  optimizer.joint_limits=true \
+  optimizer.joint_limits_weight=0.1 \
+  optimizer.smoothness=true \
+  optimizer.smoothness_weight=0.1 \
+  planner=mk_motion_policy_planning \
+  planner.goal_reach_energy=true \
+  planner.goal_reach_energy_type=last_frame \
+  planner.goal_reach_energy_weight=0.005 \
+  planner.goal_reach_energy_method=chamfer_distance \
+  diffuser.sample.converage.optimization=true \
+  diffuser.sample.converage.planning=true \
+  diffuser.sample.converage.ksteps=2 \
+  diffuser.sample.fine_tune.optimization=true \
+  diffuser.sample.fine_tune.planning=true \
+  diffuser.sample.fine_tune.timesteps=20 \
+  diffuser.sample.fine_tune.ksteps=2 \
+  diffuser.sample.amogg.enabled=true \
+  diffuser.sample.amogg.kappa=10.0 \
+  diffuser.sample.amogg.use_variance=true \
+  diffuser.sample.amogg.task_scale=1.0 \
+  diffuser.sample.amogg.collision_scale=1.0 \
+  task.environment.sim_gui=false \
+  task.environment.viz=false
 ```
+
+\</details\>
+
+### 4\. 运行 Baseline
+
+```bash
+# MPiNets
+bash ./scripts/model-mpinets/goal-reach/train.sh 1
+bash ./scripts/model-mpinets/goal-reach/inference.sh <CKPT_DIR>
+
+# MPiFormer
+bash ./scripts/model-mpiformer/goal-reach/train.sh 1
+bash ./scripts/model-mpiformer/goal-reach/inference.sh <CKPT_DIR>
+```
+
+### 5\. 结果评估后处理
+
+```bash
+python ./postprocessing/eval_all_result_goal_reach.py \
+  --result_dir ./results/<task_name>/<timestamp> \
+  --dataset_test_dir <YOUR_DATASET_PATH>/goal-reach/test
+```
+
+-----
+
+## 📂 文件结构
+
+```text
+diffuser_optimization/
+├── assests/                         # 文档图示资源
+├── configs/                         # Hydra 配置 (模型/任务/AMOGG等)
+├── datamodule/                      # 数据集加载逻辑
+├── env/                             # PyBullet环境、机器人与场景定义
+├── eval/                            # 评测指标逻辑
+├── models/
+│   ├── m2diffuser/                  # M2Diffuser与AMOGG核心算法
+│   ├── model/                       # UNet 与 Scene Model
+│   ├── mpinets/                     # MPiNets 基线
+│   ├── mpiformer/                   # MPiFormer 基线
+│   ├── optimizer/                   # 物理约束优化器
+│   └── planner/                     # 任务目标规划器
+├── postprocessing/                  # 评测结果汇总脚本
+├── preprocessing/                   # 数据预处理脚本
+├── scripts/                         # 训练与推理 Bash 脚本
+├── train.py                         # 统一训练入口
+├── inference_*.py                   # 对应模型的推理入口
+└── setup_env.sh                     # 环境一键配置脚本
+```
+
+-----
+
+## 📌 已知说明
+
+  - **快照状态**：`goal-reach` 是当前最完整、开箱即用的任务 preset。`pick` / `place` 的完整评测流程依赖的本地数据目录需用户自行补齐。
+  - **路径配置**：当前 `utils/path.py` 使用了硬编码的绝对路径，运行前**必须替换**为你本地的数据源目录。
+  - **评测引擎**：目前代码中的物理评测依赖于 PyBullet。README 中提及的 Isaac Sim / Tongverse 评测代码将在后续更新中补全。
+
+-----
+
+## 🤝 贡献与协议
+
+### 贡献指南
+
+我们非常欢迎任何形式的贡献，包括但不限于：Bug 修复、引入新任务场景、实现更强效的物理约束目标，或者开发 AMOGG 的新变体。
+
+1.  Fork 本仓库。
+2.  创建您的特性分支。
+3.  提交代码后，请务必运行 `python scripts/test_amogg_integration.py` 确保核心逻辑未被破坏。
+4.  提交 PR，并附上改动说明与复现命令。
+
+### 协议
+
+*(待补充：维护者将在后续更新中提供正式的 LICENSE 文件，预计采用 MIT 协议)*
+
+-----
+
+## 📑 引用与致谢
+
+如果您在研究中使用了本项目，请引用我们的工作：
+
+```bibtex
 @article{yan2025m2diffuser,
   title={M2Diffuser: Diffusion-based Trajectory Optimization for Mobile Manipulation in 3D Scenes},
   author={Yan, Sixu and Zhang, Zeyu and Han, Muzhi and Wang, Zaijin and Xie, Qi and Li, Zhitian and Li, Zhehan and Liu, Hangxin and Wang, Xinggang and Zhu, Song-Chun},
@@ -281,45 +320,19 @@ ${object_name}: {
 }
 ```
 
-**M3Bench**
-```
-@article{zhang2025m3bench,
-  title={M${}^{3}$Bench: Benchmarking Whole-Body Motion Generation for Mobile Manipulation in 3D Scenes},
-  author={Zhang, Zeyu and Yan, Sixu and Han, Muzhi and Wang, Zaijin and Wang, Xinggang and Zhu, Song-Chun and Liu, Hangxin},
-  journal={IEEE Robotics and Automation Letters},
-  year={2025},
-  volume={10},
-  number={7},
-  pages={7286-7293},
-  publisher={IEEE}
-}
-```
+**相关工作：**
 
-**VKC**
-```
-@inproceedings{jiao2021efficient,
-  title={Efficient task planning for mobile manipulation: a virtual kinematic chain perspective},
-  author={Jiao, Ziyuan and Zhang, Zeyu and Wang, Weiqi and Han, David and Zhu, Song-Chun and Zhu, Yixin and Liu, Hangxin},
-  booktitle={2021 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS)},
-  pages={8288--8294},
-  year={2021},
-  organization={IEEE}
-}
-```
-```
-@inproceedings{jiao2021consolidating,
-  title={Consolidating kinematic models to promote coordinated mobile manipulations},
-  author={Jiao, Ziyuan and Zhang, Zeyu and Jiang, Xin and Han, David and Zhu, Song-Chun and Zhu, Yixin and Liu, Hangxin},
-  booktitle={2021 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS)},
-  pages={979--985},
-  year={2021},
-  organization={IEEE}
-}
-```
+  - [M³Bench: Benchmarking Whole-Body Motion Generation...](https://www.google.com/search?q=https://ieeexplore.ieee.org/document/10839185) (Zhang et al., IEEE RA-L 2025)
+  - [Efficient task planning for mobile manipulation...](https://ieeexplore.ieee.org/document/9636665) (Jiao et al., IROS 2021)
 
-## Acknowledgments
+**致谢：**
+本仓库的实现参考了以下优秀开源项目：[SceneDiffuser](https://github.com/scenediffuser/Scene-Diffuser/), [MPiNets](https://github.com/NVlabs/motion-policy-networks), [Decision Transformer](https://github.com/kzl/decision-transformer), [VKC](https://github.com/zyjiao4728/Planning-on-VKC) 以及 [PhyScene](https://github.com/PhyScene/PhyScene)。
 
-Some codes are borrowed from [SceneDiffuser](https://github.com/scenediffuser/Scene-Diffuser/), [MPiNets](https://github.com/NVlabs/motion-policy-networks), [Decision Transformer](https://github.com/kzl/decision-transformer), [VKC](https://github.com/zyjiao4728/Planning-on-VKC), and [PhyScene](https://github.com/PhyScene/PhyScene).
+-----
 
-## License
-This repository is released under the MIT license. See [LICENSE](LICENSE) for additional details.
+\<div align="center"\>
+\<i\>如果这个项目对你的研究有帮助，欢迎给它点个 ⭐️ Star！这将帮助更多扩散模型、移动操作、多目标引导领域的研究者看到它。\</i\>
+\</div\>
+
+```
+```
